@@ -109,7 +109,7 @@ packer=7z
 # ***** CONFIG END ***** #
 ###############################################################
 
-fileDateFormat=$(date +"%Y-%m-%d_%H-%M-%S").tgz
+fileDateFormat=$(date +"%Y-%m-%d_%H-%M-%S")
 targetFolderFormat=$(date +"%Y-%m")
 
 # check if any files/folders given
