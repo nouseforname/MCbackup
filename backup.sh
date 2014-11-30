@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# dont forget to make the script executeable 
+# Don't forget to make the script executable
 
 # - cron
 # if running the script hourly, daily or weekly
@@ -32,18 +32,12 @@
 # 
 # to mount the shared folder automatically at reboot open the file "/etc/fstab" as root
 # add one line in the following format:
-# //smb/path/backup /mnt/backup cifs defaults,rw,username=YOURUSER,password=YOURPASSWORD 0 0
+# //smb/path/backup /mnt/backup cifs defaults,rw,username=YOURWINUSER,password=YOURWINPASSWORD,file_mode=0777,dir_mode=0777 0 0
 #
-# this should mount the shared folder at start up if available
+# this should mount the shared folder at start up if available.
+# Run "umount /mnt/backup;mount -a" after changing the fstab file to test out the changes
 #
 # -----------------------------------------------
-#
-# for the ssh connection you need to own the private key file and put it into:
-# /home/USER/.ssh
-# 
-# take care the correct permission for this folder
-# >>chmod 700 /~.ssh && chmod 600 ~/.ssh/*
-#
 #
 # to install 7z use
 # >> sudo apt-get install p7zip-full
@@ -62,14 +56,14 @@
 #
 #
 # ***** local ******
-# path to MCServer eg. /home/user/MCServer
-sourcePath=MCServer
+# path to MCServer
+sourcePath=/home/user/MCServer
 #
-# files/folders do backup
-backupList=( 'gal/' 'world/' 'Gallery.cfg' 'Gallery.sqlite' )
+# files/folders to backup
+backupList=( 'gal/' 'world/' 'Galleries.cfg' 'Galleries.sqlite' )
 #
-# path to local backup folder "/home/user/backup"
-localBackupPath=backup
+# path to local backup folder
+localBackupPath=/home/user/backup
 #
 #
 # ***** remote server via ssh ******
@@ -85,14 +79,15 @@ remotePort=22
 # remote path to backup folder
 remotePath=/home/user/backup
 #
+# keyfile to use for the remote. Note that it shouldn't be password-protected
+# Use "openssl rsa -in remoteprivkey.pem -out remoteprivkey-passwordless.pem" to remove password
+remoteKeyFile=/home/user/.ssh/remoteprivkey-passwordless.pem
 #
+#
+# Make sure the keyfile and its folder have the right permissions:
+# chmod 700 /home/user/.ssh && chmod 600 /home/user/.ssh/remoteprivkey-passwordless.pem
+
 # ***** SMB shared folder ******
-#
-# smb user
-smbUser=nobody
-#
-# smb password
-smbPass=1234
 #
 # remote SMB share path
 smbPath=/mnt/backup
@@ -119,27 +114,20 @@ if [ ! $backupList ] ; then
 fi
 
 
-# check for 7z or tar
+# write file list
+for i in "${backupList[@]}"
+do
+    echo $sourcePath/$i >> tmp
+done
+
+# Use 7z or tar to pack the files
 if [ "$packer" == "7z" ] ; then
-    
-    for i in "${backupList[@]}" 
-    do
-        7z a -mx9 $localBackupPath/$fileDateFormat.7z $sourcePath/$i
-    done
+    packedFileName=$localBackupPath/$fileDateFormat.7z
+    # Using -mx3 to reduce memory requirements; -mx9 won't work at all on the RasPi; -mx5 and -mx7 randomly fail due to out-of-memory
+    7z a -mx3 $packedFileName @tmp
 else
-    # delete temp file
-    if [ -f "tmp" ] ; then
-        rm "tmp"
-    fi
-    
-    # write file list for tar
-    for i in "${backupList[@]}" 
-    do
-        echo $sourcePath/$i >> tmp
-    done
-    
-    # tar everything from list
-    tar cvfz $localBackupPath/$fileDateFormat.tgz -T tmp
+    packedFileName=$localBackupPath/$fileDateFormat.tgz
+    tar cvfz $packedFileName -T tmp
 fi
 
 
@@ -148,11 +136,11 @@ if [ ! -d $smbPath/$targetFolderFormat ] ; then
     mkdir $smbPath/$targetFolderFormat
 fi
 
-cp $localBackupPath/$fileDateFormat $smbPath/$targetFolderFormat/
+cp $packedFileName $smbPath/$targetFolderFormat/
 
 
 # copy to remote via scp
-ssh -p $remotePort $remoteUser@$remoteHost "mkdir -p $remotePath/$targetFolderFormat" && scp -rp -P $remotePort $src $remoteUser@$remoteHost:$remotePath/$targetFolderFormat
+ssh -i $remoteKeyFile -p $remotePort $remoteUser@$remoteHost "mkdir -p $remotePath/$targetFolderFormat" && scp -rp -i $remoteKeyFile -P $remotePort $packedFileName $remoteUser@$remoteHost:$remotePath/$targetFolderFormat
 
 
 # check if local backup should be deleted
